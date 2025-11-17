@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cats vs Dogs – Onchain Vote (Base)</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0b1020;
+      color: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px;
+    }
+    h1 {
+      margin-bottom: 5px;
+    }
+    .card {
+      background: #151b35;
+      border-radius: 10px;
+      padding: 20px 30px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      margin-top: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      margin: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    #connectButton {
+      background: #0052ff;
+      color: white;
+    }
+    #catButton {
+      background: #ff8fb4;
+    }
+    #dogButton {
+      background: #ffd280;
+    }
+    #status {
+      margin-top: 10px;
+      font-size: 14px;
+      min-height: 20px;
+    }
+    .counts {
+      margin-top: 15px;
+      font-size: 18px;
+    }
+    .note {
+      font-size: 12px;
+      color: #b0b0b0;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Cats vs Dogs 🐱🐶</h1>
+  <p>Onchain vote on Base (testnet). One vote per wallet.</p>
+
+  <div class="card">
+    <button id="connectButton">Connect Wallet</button>
+    <div id="networkWarning" class="note"></div>
+
+    <div class="counts">
+      <div>Cats: <span id="catCount">-</span></div>
+      <div>Dogs: <span id="dogCount">-</span></div>
+    </div>
+
+    <div style="margin-top: 15px;">
+      <button id="catButton">Vote for Cats 🐱</button>
+      <button id="dogButton">Vote for Dogs 🐶</button>
+    </div>
+
+    <div id="status"></div>
+    <div class="note">
+      Make sure your wallet is on <b>Base Sepolia</b> network.
+    </div>
+  </div>
+
+  <script>
+    // === 1. Basic setup ===
+
+    // Replace this with your contract address from Remix:
+    const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE";
+
+    // This is the ABI (the "interface" of the contract).
+    const CONTRACT_ABI = [
+      {
+        "inputs": [],
+        "name": "catVotes",
+        "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "dogVotes",
+        "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "voteForCats",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "voteForDogs",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      }
+    ];
+
+    let provider;
+    let signer;
+    let contract;
+
+    const connectButton = document.getElementById("connectButton");
+    const catButton = document.getElementById("catButton");
+    const dogButton = document.getElementById("dogButton");
+    const statusDiv = document.getElementById("status");
+    const catCountSpan = document.getElementById("catCount");
+    const dogCountSpan = document.getElementById("dogCount");
+    const networkWarning = document.getElementById("networkWarning");
+
+    // === 2. Helper functions ===
+
+    function setStatus(message) {
+      statusDiv.textContent = message;
+      console.log(message); // Also log to console for debugging
+    }
+
+    async function checkNetwork() {
+      if (!provider) return;
+
+      const network = await provider.getNetwork();
+      // Base Sepolia chain ID is 84532
+      const baseSepoliaChainId = 84532;
+
+      if (network.chainId !== baseSepoliaChainId) {
+        networkWarning.textContent =
+          "⚠️ Wrong network! You are on chain ID " +
+          network.chainId +
+          ". Switch to Base Sepolia (84532) in your wallet.";
+      } else {
+        networkWarning.textContent = "✅ On Base Sepolia";
+      }
+    }
+
+    async function updateCounts() {
+      if (!contract) return;
+      try {
+        const cats = await contract.catVotes();
+        const dogs = await contract.dogVotes();
+        catCountSpan.textContent = cats.toString();
+        dogCountSpan.textContent = dogs.toString();
+        setStatus("Counts updated.");
+      } catch (err) {
+        console.error("Update counts error:", err);
+        setStatus("Error reading votes. Check: Is contract address correct? Console: F12.");
+      }
+    }
+
+    // === 3. Connect wallet ===
+
+    async function connectWallet() {
+      if (!window.ethereum) {
+        alert("No wallet found! Install MetaMask or Coinbase Wallet extension.");
+        setStatus("No wallet detected. Install one and refresh.");
+        return;
+      }
+
+      try {
+        // Ask the user to connect accounts
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+        const userAddress = await signer.getAddress();
+        connectButton.textContent = "Connected: " + userAddress.slice(0, 6) + "..." + userAddress.slice(-4);
+        connectButton.disabled = true; // Prevent re-clicking
+
+        setStatus("Wallet connected! Checking network...");
+        await checkNetwork();
+        if (networkWarning.textContent.includes("Wrong")) {
+          setStatus("Switch to Base Sepolia first, then refresh or reconnect.");
+          return;
+        }
+        await updateCounts();
+
+        // Listen for network changes (chain switch)
+        window.ethereum.on("chainChanged", async () => {
+          location.reload(); // Simple: reload page on chain switch
+        });
+
+        // Listen for account changes
+        window.ethereum.on("accountsChanged", async () => {
+          location.reload();
+        });
+
+      } catch (err) {
+        console.error("Connect error:", err);
+        if (err.code === 4001) {
+          setStatus("Connection rejected by user.");
+        } else if (err.code === -32002) {
+          setStatus("Wallet is locked. Unlock your wallet and try again.");
+        } else {
+          setStatus("Connection failed. Error: " + err.message + ". Check console (F12).");
+        }
+      }
+    }
+
+    // === 4. Voting functions === (unchanged, but with better errors)
+
+    async function voteCats() {
+      if (!contract) {
+        setStatus("Connect your wallet first.");
+        return;
+      }
+      setStatus("Voting for cats... (confirm in wallet)");
+      try {
+        const tx = await contract.voteForCats();
+        setStatus("Tx sent! Waiting for confirmation...");
+        await tx.wait();
+        setStatus("Cats vote confirmed! 🐱");
+        await updateCounts();
+      } catch (err) {
+        console.error(err);
+        if (err.data && err.data.message && err.data.message.includes("You already voted")) {
+          setStatus("You already voted once.");
+        } else if (err.message && err.message.includes("You already voted")) {
+          setStatus("You already voted once.");
+        } else if (err.code === 4001) {
+          setStatus("Vote rejected in wallet.");
+        } else if (err.message.includes("insufficient funds")) {
+          setStatus("Not enough test ETH. Get more from faucet.");
+        } else {
+          setStatus("Vote error: " + err.message + ". Check console.");
+        }
+      }
+    }
+
+    async function voteDogs() {
+      if (!contract) {
+        setStatus("Connect your wallet first.");
+        return;
+      }
+      setStatus("Voting for dogs... (confirm in wallet)");
+      try {
+        const tx = await contract.voteForDogs();
+        setStatus("Tx sent! Waiting for confirmation...");
+        await tx.wait();
+        setStatus("Dogs vote confirmed! 🐶");
+        await updateCounts();
+      } catch (err) {
+        console.error(err);
+        if (err.data && err.data.message && err.data.message.includes("You already voted")) {
+          setStatus("You already voted once.");
+        } else if (err.message && err.message.includes("You already voted")) {
+          setStatus("You already voted once.");
+        } else if (err.code === 4001) {
+          setStatus("Vote rejected in wallet.");
+        } else if (err.message.includes("insufficient funds")) {
+          setStatus("Not enough test ETH. Get more from faucet.");
+        } else {
+          setStatus("Vote error: " + err.message + ". Check console.");
+        }
+      }
+    }
+
+    // === 5. Wire up buttons ===
+
+    connectButton.addEventListener("click", connectWallet);
+    catButton.addEventListener("click", voteCats);
+    dogButton.addEventListener("click", voteDogs);
+
+    // Optional: try to connect on page load (if user already gave permission)
+    window.addEventListener("load", async () => {
+      if (window.ethereum && window.ethereum.selectedAddress) {
+        await connectWallet();
+      }
+    });
+
+    // Debug: Log if ethereum is available on load
+    console.log("Ethereum available:", !!window.ethereum);
+  </script>
+</body>
+</html>
